@@ -24,6 +24,10 @@ export function SettingsScreen({ navigation }: Props) {
   const [gameConfig, setGameConfig] = useState<GameConfig>(() => appStorage.getGameConfig());
   const [confirmationReset, setConfirmationReset] = useState(false);
 
+  // nbJoueurs n'est plus modifiable ici : ce n'est pas une préférence, c'est
+  // dérivé du nombre de joueurs réellement connectés une fois dans un lobby
+  // (voir LobbyScreen). Ici, sa valeur par défaut sert uniquement de base au
+  // calcul du plafond de cartes avant qu'un lobby n'existe.
   const maxCartesPourJoueurs = Math.floor(MAX_TOTAL_CARTES / gameConfig.nbJoueurs);
 
   function basculerLangue() {
@@ -107,18 +111,6 @@ export function SettingsScreen({ navigation }: Props) {
       </View>
       <Card style={{ marginBottom: theme.spacing.lg }}>
         <ListRow
-          label="Nombre de joueurs"
-          avecSeparateur
-          rightElement={
-            <Stepper
-              value={gameConfig.nbJoueurs}
-              min={2}
-              max={10}
-              onChange={(v) => updateGameConfig({ nbJoueurs: v })}
-            />
-          }
-        />
-        <ListRow
           label="Cartes par joueur"
           avecSeparateur
           rightElement={
@@ -136,7 +128,8 @@ export function SettingsScreen({ navigation }: Props) {
             { color: theme.colors.textSecondary, marginTop: -theme.spacing.sm, marginBottom: theme.spacing.sm },
           ]}
         >
-          Max {maxCartesPourJoueurs} cartes avec {gameConfig.nbJoueurs} joueurs (joueurs × cartes doit rester {'<'} 53).
+          Le nombre de joueurs dépend de qui se connecte à ta partie — la limite de cartes sera
+          recalculée automatiquement dans le lobby en fonction des joueurs réellement présents.
         </Text>
 
         <ListRow

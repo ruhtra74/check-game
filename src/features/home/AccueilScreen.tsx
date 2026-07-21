@@ -46,7 +46,7 @@ export function AccueilScreen({ navigation }: Props) {
 
       {/* Action principale */}
       <View style={{ marginTop: theme.spacing.xxl }}>
-        <Button label="JOUER" onPress={() => {}} />
+        <Button label="JOUER" onPress={() => navigation.navigate('ChoisirMode')} />
       </View>
 
       {/* Menu secondaire */}

@@ -9,9 +9,14 @@ import { SettingsScreen } from '../../features/settings/SettingsScreen';
 import { CustomizeColorScreen } from '../../features/settings/CustomizeColorScreen';
 import { StatsScreen } from '../../features/stats/StatsScreen';
 import { RulesScreen } from '../../features/rules/RulesScreen';
+import { ChoisirModeScreen } from '../../features/party/ChoisirModeScreen';
+import { CreerPartieScreen } from '../../features/party/CreerPartieScreen';
+import { RejoindrePartieScreen } from '../../features/party/RejoindrePartieScreen';
+import { LobbyScreen } from '../../features/party/LobbyScreen';
+import { TableJeuScreen } from '../../features/table/TableJeuScreen';
 import { appStorage } from '../../storage';
 
-// Ce type grandit au fil de l'implémentation des écrans (Phases 4 et 5).
+// Ce type grandit au fil de l'implémentation des écrans (Phase 5 : vrai moteur + réseau).
 export type RootStackParamList = {
   Bienvenue: undefined;
   // pseudoInitial : présent uniquement en mode édition (depuis Profil), pour
@@ -24,6 +29,13 @@ export type RootStackParamList = {
   PersonnaliserCouleur: undefined;
   Statistiques: undefined;
   Regles: undefined;
+  ChoisirMode: undefined;
+  CreerPartie: undefined;
+  RejoindrePartie: undefined;
+  Lobby:
+    | { mode: 'hote'; nomPartie: string }
+    | { mode: 'invite'; nomPartie: string; hoteNom: string };
+  TableJeu: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -48,6 +60,11 @@ export function RootNavigator() {
       <Stack.Screen name="PersonnaliserCouleur" component={CustomizeColorScreen} />
       <Stack.Screen name="Statistiques" component={StatsScreen} />
       <Stack.Screen name="Regles" component={RulesScreen} />
+      <Stack.Screen name="ChoisirMode" component={ChoisirModeScreen} />
+      <Stack.Screen name="CreerPartie" component={CreerPartieScreen} />
+      <Stack.Screen name="RejoindrePartie" component={RejoindrePartieScreen} />
+      <Stack.Screen name="Lobby" component={LobbyScreen} />
+      <Stack.Screen name="TableJeu" component={TableJeuScreen} />
     </Stack.Navigator>
   );
 }

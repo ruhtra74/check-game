@@ -8,3 +8,4 @@ export * from './ProgressDots';
 export * from './ListRow';
 export * from './ScreenHeader';
 export * from './Stepper';
+export * from './PlayingCard';
