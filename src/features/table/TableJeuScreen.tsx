@@ -4,10 +4,12 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Avatar, Button, Card, Dialog, PlayingCard, SYMBOLES_ENSEIGNE } from '../../components';
 import { useTheme } from '../../theme';
 import { resolveTextStyle } from '../../theme/textStyle';
+import { appStorage } from '../../storage';
 import {
   carteJouable,
   carteVisible,
   peutDeclencherVote,
+  peutPiocher,
   type Card as CarteMoteur,
   type GameState,
   type Suit,
@@ -23,6 +25,22 @@ const ENSEIGNES: Suit[] = ['pique', 'coeur', 'trefle', 'carreau'];
 
 function retourAccueil(navigation: Props['navigation']) {
   navigation.reset({ index: 0, routes: [{ name: 'Accueil' }] });
+}
+
+/**
+ * Construit la liste (au format attendu par l'écran Lobby) des joueurs
+ * encore actifs dans le tournoi au moment du blocage — c'est cette liste
+ * qu'on ramène dans le lobby pour proposer de recommencer, plutôt que de
+ * tout effacer et renvoyer à l'accueil.
+ */
+function construireJoueursPourLobby(
+  tournoi: TournoiState,
+  infosAffichage: Map<string, JoueurAffichage>
+): { id: string; pseudo: string; emoji?: string }[] {
+  return tournoi.joueursActifs.map((j) => {
+    const infos = infosAffichage.get(j.id);
+    return { id: j.id, pseudo: infos?.nom ?? j.nom, emoji: infos?.emoji };
+  });
 }
 
 export function TableJeuScreen({ navigation, route }: Props) {
@@ -43,6 +61,7 @@ export function TableJeuScreen({ navigation, route }: Props) {
     jouerCarte,
     partirEnBanque,
     choisirEnseigne,
+    terminerPartieBlocage,
     terminerMancheParVote,
     continuerVersProchaineManche,
   } = useMoteurJeu({ joueurs, config });
@@ -60,6 +79,7 @@ export function TableJeuScreen({ navigation, route }: Props) {
 
   const [confirmerSortie, setConfirmerSortie] = useState(false);
   const [confirmerVote, setConfirmerVote] = useState(false);
+  const [confirmerBlocage, setConfirmerBlocage] = useState(false);
 
   // Bannière transitoire pour les événements Check / Games.
   const [messageEvenement, setMessageEvenement] = useState<string | null>(null);
@@ -82,6 +102,14 @@ export function TableJeuScreen({ navigation, route }: Props) {
     retourAccueil(navigation);
   }
 
+  function retournerAuLobbyApresBlocage() {
+    navigation.replace('Lobby', {
+      mode: 'hote',
+      nomPartie: `Partie de ${appStorage.getPseudo() ?? 'Joueur'}`,
+      joueursExistants: construireJoueursPourLobby(tournoi, infosAffichage),
+    });
+  }
+
   // ---------------------------------------------------------------------
   // Vues plein écran selon la phase de la partie
   // ---------------------------------------------------------------------
@@ -91,13 +119,7 @@ export function TableJeuScreen({ navigation, route }: Props) {
   }
 
   if (manche.phase === 'bloque') {
-    return (
-      <VueBloquee
-        raison={manche.raisonBlocage}
-        onRetourAccueil={quitter}
-        onVoirParametres={() => navigation.navigate('Parametres')}
-      />
-    );
+    return <VueBloquee raison={manche.raisonBlocage} onRetourLobby={retournerAuLobbyApresBlocage} />;
   }
 
   if (manche.phase === 'mancheTerminee') {
@@ -123,6 +145,13 @@ export function TableJeuScreen({ navigation, route }: Props) {
   const monJoueurEtat = manche.joueurs.find((j) => j.id === joueurActifId);
   const adversaires = manche.joueurs.filter((j) => j.id !== joueurActifId);
   const top = carteVisible(manche);
+
+  // La pioche (bouton "Banque") peut être impossible si la banque et la
+  // défausse recyclable sont insuffisantes. Dans ce cas on grise le bouton
+  // plutôt que de bloquer automatiquement la partie : le joueur peut encore
+  // déposer une carte valide, ou choisir explicitement de terminer la partie.
+  const nombreAPiocher = manche.compteurAttaque > 0 ? manche.compteurAttaque : 1;
+  const piocheDisponible = peutPiocher(manche, nombreAPiocher);
 
   function estJouable(carte: CarteMoteur): boolean {
     return carteJouable(manche, carte, configActive);
@@ -180,6 +209,14 @@ export function TableJeuScreen({ navigation, route }: Props) {
         </Card>
       )}
 
+      {!piocheDisponible && (
+        <Card style={{ backgroundColor: theme.colors.warningBg, marginVertical: theme.spacing.sm }}>
+          <Text style={[bodyMedium, { color: theme.colors.warning, textAlign: 'center' }]}>
+            ⚠️ Plus assez de cartes pour piocher. Joue une carte, ou termine la partie.
+          </Text>
+        </Card>
+      )}
+
       {/* Pile centrale + banque */}
       <View style={{ alignItems: 'center', marginVertical: theme.spacing.lg }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xl }}>
@@ -223,7 +260,7 @@ export function TableJeuScreen({ navigation, route }: Props) {
         })}
       </ScrollView>
 
-      <View style={{ flexDirection: 'row', gap: theme.spacing.md, marginTop: theme.spacing.md }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.md, marginTop: theme.spacing.md }}>
         <Button
           label="JOUER UNE CARTE"
           onPress={() => {
@@ -232,7 +269,10 @@ export function TableJeuScreen({ navigation, route }: Props) {
           }}
           disabled={!selectionId}
         />
-        <Button label="BANQUE" variant="danger" onPress={partirEnBanque} />
+        <Button label="BANQUE" variant="danger" onPress={partirEnBanque} disabled={!piocheDisponible} />
+        {!piocheDisponible && (
+          <Button label="TERMINER LA PARTIE" variant="ghost" onPress={() => setConfirmerBlocage(true)} />
+        )}
       </View>
 
       <Dialog visible={manche.phase === 'choixEnseigneValet'} title="Choisis une enseigne">
@@ -291,6 +331,28 @@ export function TableJeuScreen({ navigation, route }: Props) {
       >
         <Text style={[body, { color: theme.colors.textSecondary, textAlign: 'center' }]}>
           Les joueurs encore en jeu seront disqualifiés de ce tournoi.
+        </Text>
+      </Dialog>
+
+      <Dialog
+        visible={confirmerBlocage}
+        title="Terminer la partie ?"
+        onClose={() => setConfirmerBlocage(false)}
+        actions={[
+          {
+            label: 'Oui, terminer',
+            variant: 'danger',
+            onPress: () => {
+              terminerPartieBlocage();
+              setConfirmerBlocage(false);
+            },
+          },
+          { label: 'Annuler', variant: 'ghost', onPress: () => setConfirmerBlocage(false) },
+        ]}
+      >
+        <Text style={[body, { color: theme.colors.textSecondary, textAlign: 'center' }]}>
+          Il n'y a plus assez de cartes pour continuer. Vous retournerez au lobby avec les joueurs
+          encore en jeu pour recommencer.
         </Text>
       </Dialog>
     </ShellLayout>
@@ -390,12 +452,10 @@ function VueFinManche({
 
 function VueBloquee({
   raison,
-  onRetourAccueil,
-  onVoirParametres,
+  onRetourLobby,
 }: {
   raison: string | null;
-  onRetourAccueil: () => void;
-  onVoirParametres: () => void;
+  onRetourLobby: () => void;
 }) {
   const theme = useTheme();
   const h1 = resolveTextStyle(theme, 'h1');
@@ -406,13 +466,12 @@ function VueBloquee({
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: theme.spacing.lg }}>
         <Text style={{ fontSize: 56 }}>🚧</Text>
         <Text style={[h1, { color: theme.colors.textPrimary, textAlign: 'center' }]}>
-          La partie ne peut pas continuer
+          Plus assez de cartes pour continuer
         </Text>
         <Text style={[body, { color: theme.colors.textSecondary, textAlign: 'center', maxWidth: 280 }]}>
-          {raison ?? 'Une situation imprévue empêche de poursuivre cette manche.'}
+          {raison ?? 'La banque est vide et aucune carte ne peut plus être piochée.'}
         </Text>
-        <Button label="Modifier les paramètres" variant="secondary" onPress={onVoirParametres} />
-        <Button label="Retour à l'accueil" onPress={onRetourAccueil} />
+        <Button label="Retourner au lobby" onPress={onRetourLobby} />
       </View>
     </ShellLayout>
   );

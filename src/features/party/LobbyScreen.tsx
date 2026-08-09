@@ -19,9 +19,10 @@ export function LobbyScreen({ navigation, route }: Props) {
 
   const { mode, nomPartie } = route.params;
   const hoteNomSiInvite = route.params.mode === 'invite' ? route.params.hoteNom : undefined;
+  const joueursExistants = route.params.mode === 'hote' ? route.params.joueursExistants : undefined;
 
   const { etat, monId, basculerSelection, modifierConfig, demarrerPartie, confirmerPret, joueursSelectionnes, tousPrets } =
-    useLobbySimulation({ mode, nomPartie, hoteNomSiInvite });
+    useLobbySimulation({ mode, nomPartie, hoteNomSiInvite, joueursExistants });
 
   const jeSuisHote = mode === 'hote';
   const monJoueur = etat.joueurs.find((j) => j.id === monId);

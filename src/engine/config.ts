@@ -19,8 +19,8 @@ export function validerConfig(config: GameConfig): ConfigValidationResult {
     erreurs.push('nbJoueurs doit être un entier entre 2 et 10.');
   }
 
-  if (!Number.isInteger(config.nbCartesInitial) || config.nbCartesInitial < 1) {
-    erreurs.push('nbCartesInitial doit être un entier supérieur ou égal à 1.');
+  if (!Number.isInteger(config.nbCartesInitial) || config.nbCartesInitial < 2) {
+    erreurs.push('nbCartesInitial doit être un entier supérieur ou égal à 2.');
   }
 
   if (

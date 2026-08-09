@@ -35,7 +35,14 @@ export type RootStackParamList = {
   CreerPartie: undefined;
   RejoindrePartie: undefined;
   Lobby:
-    | { mode: 'hote'; nomPartie: string }
+    | {
+        mode: 'hote';
+        nomPartie: string;
+        // Fourni quand on revient d'une partie interrompue (banque vide) :
+        // pré-remplit le lobby avec les joueurs encore actifs plutôt que de
+        // repartir d'une simulation d'arrivée vide.
+        joueursExistants?: { id: string; pseudo: string; emoji?: string }[];
+      }
     | { mode: 'invite'; nomPartie: string; hoteNom: string };
   TableJeu: { joueurs: JoueurAffichage[]; config: GameConfig };
 };

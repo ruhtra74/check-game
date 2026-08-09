@@ -39,10 +39,11 @@ const SECTIONS: Section[] = [
       "Une fois posé, tu choisis l'enseigne que le joueur suivant devra respecter — jusqu'à ce qu'un autre Valet change à nouveau la commande.",
     ],
   },
-  {
+{
     titre: '🅰️ L\'As arrête',
     paragraphes: [
       "Fait sauter le tour du joueur suivant. À 2 joueurs seulement, ça te redonne la main : tu peux enchaîner un autre As si tu en as.",
+      "Si c'était ta toute dernière carte et qu'il ne reste que 2 joueurs en lice, tu ne gagnes pas directement : tu dois repiocher une carte avant que ton tour se termine vraiment.",
     ],
   },
   {

@@ -377,3 +377,81 @@ describe('Configuration et intégrité', () => {
     expect(s2.raisonBlocage).toBeDefined();
   });
 });
+
+describe('l\'As Stop', () => {
+  it('à 2 joueurs, redonne la main au même joueur sans terminer la manche même si c\'était sa dernière carte', () => {
+    const state = etatManuel({
+      pileCentrale: [carte('coeur', 'A', 'top')],
+      joueurs: [
+        { id: J1.id, nom: J1.nom, main: [carte('coeur', 'A', 'as1')], qualifie: false },
+        { id: J2.id, nom: J2.nom, main: [carte('pique', '9')], qualifie: false },
+      ],
+    });
+    const s2 = appliquerAction(state, { type: 'JOUER_CARTE', joueurId: J1.id, carteId: 'as1', timestamp: 10 });
+    expect(s2.indexJoueurActif).toBe(0); // reste sur J1
+    expect(s2.phase).toBe('enCours'); // la manche ne se termine PAS directement
+    expect(s2.joueurs.find((j) => j.id === J1.id)?.qualifie).toBe(false);
+    expect(s2.joueurs.find((j) => j.id === J1.id)?.main).toHaveLength(0);
+
+    // J1 n'a plus de carte : sa seule action possible est de partir en
+    // banque, ce qui termine alors réellement son tour (règle 2.2).
+    const s3 = appliquerAction(s2, { type: 'PARTIR_EN_BANQUE', joueurId: J1.id, timestamp: 11 });
+    expect(s3.indexJoueurActif).toBe(1); // le tour passe enfin à J2
+    expect(s3.joueurs.find((j) => j.id === J1.id)?.qualifie).toBe(false);
+    expect(s3.joueurs.find((j) => j.id === J1.id)?.main).toHaveLength(1);
+  });
+
+  it('à 3 joueurs, saute exactement un joueur (pas d\'enchaînement) et qualifie normalement si c\'était la dernière carte', () => {
+    const state = etatManuel({
+      pileCentrale: [carte('coeur', 'A', 'top')],
+      joueurs: [
+        { id: J1.id, nom: J1.nom, main: [carte('coeur', 'A', 'as1')], qualifie: false },
+        { id: J2.id, nom: J2.nom, main: [carte('pique', '9')], qualifie: false },
+        { id: J3.id, nom: J3.nom, main: [carte('trefle', '9')], qualifie: false },
+      ],
+      ordreJoueursIds: [J1.id, J2.id, J3.id],
+    });
+    const s2 = appliquerAction(state, { type: 'JOUER_CARTE', joueurId: J1.id, carteId: 'as1', timestamp: 10 });
+    expect(s2.indexJoueurActif).toBe(2); // J2 sauté, tour à J3
+    // À 3 joueurs (encore tous non qualifiés), poser son dernier As qualifie
+    // immédiatement le joueur — contrairement au cas à 2 joueurs en lice.
+    expect(s2.joueurs.find((j) => j.id === J1.id)?.qualifie).toBe(true);
+    expect(s2.evenements.some((e) => e.type === 'GAMES' && e.joueurId === J1.id)).toBe(true);
+    expect(s2.phase).toBe('enCours'); // il reste 2 joueurs non qualifiés (J2, J3)
+  });
+
+  it('à 3 joueurs, si un seul adversaire restait non qualifié, poser son dernier As termine directement la manche', () => {
+    const state = etatManuel({
+      pileCentrale: [carte('coeur', 'A', 'top')],
+      joueurs: [
+        { id: J1.id, nom: J1.nom, main: [carte('coeur', 'A', 'as1')], qualifie: false },
+        { id: J2.id, nom: J2.nom, main: [], qualifie: true, tempsQualificationMs: 100 },
+        { id: J3.id, nom: J3.nom, main: [carte('trefle', '9')], qualifie: false },
+      ],
+      ordreJoueursIds: [J1.id, J2.id, J3.id],
+    });
+    const s2 = appliquerAction(state, { type: 'JOUER_CARTE', joueurId: J1.id, carteId: 'as1', timestamp: 10 });
+    expect(s2.phase).toBe('mancheTerminee');
+    expect(s2.perdantId).toBe(J3.id);
+  });
+
+  it("cas générique : s'il ne reste que 2 joueurs non qualifiés dans une manche à plus de 2 joueurs, la règle du cas 2 joueurs s'applique", () => {
+    const state = etatManuel({
+      pileCentrale: [carte('coeur', 'A', 'top')],
+      joueurs: [
+        { id: J1.id, nom: J1.nom, main: [carte('coeur', 'A', 'as1')], qualifie: false },
+        { id: J2.id, nom: J2.nom, main: [], qualifie: true, tempsQualificationMs: 100 }, // déjà qualifié
+        { id: J3.id, nom: J3.nom, main: [carte('trefle', '9')], qualifie: false },
+      ],
+      ordreJoueursIds: [J1.id, J2.id, J3.id],
+      indexJoueurActif: 0,
+    });
+    // J2 est déjà qualifié : il ne reste que J1 et J3 non qualifiés
+    // ("deux joueurs qui s'affrontent"), même si la manche compte 3 joueurs
+    // au total -> même comportement que le cas strictement à 2 joueurs.
+    const s2 = appliquerAction(state, { type: 'JOUER_CARTE', joueurId: J1.id, carteId: 'as1', timestamp: 10 });
+    expect(s2.phase).toBe('enCours');
+    expect(s2.joueurs.find((j) => j.id === J1.id)?.qualifie).toBe(false);
+    expect(s2.indexJoueurActif).toBe(0); // revient à J1 (J2, déjà qualifié, est sauté)
+  });
+});

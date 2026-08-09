@@ -44,6 +44,7 @@ export function SettingsScreen({ navigation }: Props) {
       // de laisser l'utilisateur dans un état invalide.
       const max = Math.floor(MAX_TOTAL_CARTES / next.nbJoueurs);
       if (next.nbCartesInitial > max) next.nbCartesInitial = max;
+      if (next.nbCartesInitial < 2) next.nbCartesInitial = 2;
       appStorage.setGameConfig(next);
       return next;
     });
@@ -116,7 +117,7 @@ export function SettingsScreen({ navigation }: Props) {
           rightElement={
             <Stepper
               value={gameConfig.nbCartesInitial}
-              min={1}
+              min={2}
               max={maxCartesPourJoueurs}
               onChange={(v) => updateGameConfig({ nbCartesInitial: v })}
             />

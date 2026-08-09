@@ -107,6 +107,30 @@ export function useMoteurJeu({ joueurs, config }: OptionsMoteur) {
   }, []);
 
   /**
+   * Le joueur actif décide explicitement de terminer la partie parce que la
+   * banque est vide et qu'aucune pioche n'est plus possible. Tant que cette
+   * fonction n'est pas appelée, la partie continue normalement (le joueur
+   * peut toujours déposer une carte valide).
+   */
+  const terminerPartieBlocage = useCallback(() => {
+    setEtatPartie((actuel) => {
+      const joueurActifId = actuel.manche.ordreJoueursIds[actuel.manche.indexJoueurActif];
+      if (!joueurActifId) return actuel;
+      try {
+        const nouvelleManche = appliquerAction(actuel.manche, {
+          type: 'TERMINER_PARTIE_BLOCAGE',
+          joueurId: joueurActifId,
+          timestamp: Date.now(),
+        });
+        return { ...actuel, manche: nouvelleManche };
+      } catch (erreur) {
+        console.warn('Impossible de terminer la partie ici :', erreur);
+        return actuel;
+      }
+    });
+  }, []);
+
+  /**
    * Termine la manche en cours immédiatement, sans attendre la fin
    * naturelle. Sur un seul appareil, il n'y a physiquement qu'un "vote"
    * possible — celui de la personne qui tient le téléphone à cet instant.
@@ -158,6 +182,7 @@ export function useMoteurJeu({ joueurs, config }: OptionsMoteur) {
     jouerCarte,
     partirEnBanque,
     choisirEnseigne,
+    terminerPartieBlocage,
     terminerMancheParVote,
     continuerVersProchaineManche,
   };

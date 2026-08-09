@@ -1,6 +1,6 @@
 import { estAs, estDeux, estJoker, estSept, estValet } from './deck';
 import { piocherCartes } from './pioche';
-import { carteJouable, carteVisible, valeurAttaque } from './rules';
+import { carteJouable, carteVisible, joueursEncoreEnJeu, valeurAttaque } from './rules';
 import type { Card, GameAction, GameEvent, GameState, PlayerState } from './types';
 
 function joueurActifId(state: GameState): string {
@@ -20,7 +20,8 @@ function estQualifie(state: GameState, joueurId: string): boolean {
  * C'est cette fonction générique qui implémente naturellement :
  *  - le passage de tour normal (sauts = 1)
  *  - l'effet "As Stop" qui saute le joueur suivant (sauts = 2) — et qui, à 2
- *    joueurs seulement, ramène mécaniquement la main au même joueur puisqu'il
+ *    joueurs ENCORE NON QUALIFIÉS seulement (que la manche en compte 2 au
+ *    total ou plus), ramène mécaniquement la main au même joueur puisqu'il
  *    n'y a alors qu'un seul autre joueur valide à sauter (spec 4.3).
  */
 function avancerIndex(state: GameState, depuisIndex: number, sauts: number): number {
@@ -114,10 +115,22 @@ function traiterJouerCarte(
     : [...state.pileCentrale, carte];
 
   const finMain = nouvelleMain.length;
+
+  // Règle : à 2 joueurs ENCORE NON QUALIFIÉS (lui inclus, qu'il y ait 2 ou
+  // davantage de joueurs au total dans la manche), poser son As comme
+  // dernière carte ne termine PAS la manche. L'As redonne normalement la
+  // main au même joueur (spec 4.3) ; comme il n'a alors plus aucune carte,
+  // il devra obligatoirement partir en banque à son tour suivant — et c'est
+  // cette pioche, pas le dépôt de l'As, qui mettra fin à son tour. Il n'est
+  // donc PAS qualifié tout de suite. On calcule ce compte AVANT toute
+  // mutation, donc `joueur` (lui) est bien inclus parmi les non-qualifiés.
+  const asDernierCarteDeuxEnJeu =
+    estAs(carte) && finMain === 0 && joueursEncoreEnJeu(state).length === 2;
+
   let evenements = state.evenements;
   let joueurs = remplacerJoueur(state.joueurs, joueurId, { main: nouvelleMain });
 
-  if (finMain === 0) {
+  if (finMain === 0 && !asDernierCarteDeuxEnJeu) {
     const tempsQualificationMs = timestamp - state.debutMancheTimestamp;
     joueurs = remplacerJoueur(joueurs, joueurId, { qualifie: true, tempsQualificationMs });
     evenements = ajouterEvenement(evenements, { type: 'GAMES', joueurId, timestamp });
@@ -156,9 +169,11 @@ function traiterJouerCarte(
     enseigneCommandee: estDeux(carte) ? state.enseigneCommandee : null,
   };
 
-  // Condition d'arrêt de la manche (5.3) : prioritaire sur tout le reste,
-  // y compris un Valet qui attendrait normalement un choix d'enseigne.
-  const finManche = verifierFinDeManche(etatIntermediaire, timestamp);
+  // Condition d'arrêt de la manche (5.3) : prioritaire sur tout le reste, y
+  // compris un Valet qui attendrait normalement un choix d'enseigne — SAUF
+  // le cas particulier ci-dessus (As dernière carte à 2 joueurs en lice), où
+  // le joueur n'est volontairement pas encore qualifié.
+  const finManche = asDernierCarteDeuxEnJeu ? null : verifierFinDeManche(etatIntermediaire, timestamp);
   if (finManche) return finManche;
 
   if (estValet(carte)) {
@@ -213,6 +228,11 @@ function traiterPartirEnBanque(state: GameState, joueurId: string, timestamp: nu
 
   const resultat = piocherCartes(state, nombreAPiocher);
   if (resultat.bloque) {
+    // Filet de sécurité défensif : l'UI est censée désactiver l'action de
+    // pioche avant d'en arriver là (voir peutPiocher / TERMINER_PARTIE_BLOCAGE
+    // ci-dessous, qui est le chemin normal désormais côté joueur). On garde
+    // ce blocage automatique pour ne jamais planter si l'action est quand
+    // même déclenchée dans cet état.
     return {
       ...state,
       phase: 'bloque',
@@ -253,6 +273,9 @@ function traiterPartirEnBanque(state: GameState, joueurId: string, timestamp: nu
   }
 
   // Pioche volontaire normale (2.2) : le tour se termine immédiatement.
+  // C'est aussi ce chemin qui termine le tour du joueur qui vient de poser
+  // son As comme dernière carte à 2 joueurs en lice (voir traiterJouerCarte) :
+  // n'ayant plus de carte, sa seule action possible ici est celle-ci.
   const indexJoueurActif = avancerIndex(state, state.indexJoueurActif, 1);
   return {
     ...state,
@@ -260,6 +283,45 @@ function traiterPartirEnBanque(state: GameState, joueurId: string, timestamp: nu
     banque: resultat.banque,
     pileCentrale: resultat.pileCentrale,
     indexJoueurActif,
+  };
+}
+
+/**
+ * Le joueur actif choisit explicitement de terminer la partie car la pioche
+ * est impossible (banque + défausse recyclable insuffisantes). Contrairement
+ * à traiterPartirEnBanque, ceci n'est JAMAIS déclenché automatiquement : côté
+ * UI, le bouton "Banque" est grisé dans ce cas et ce bouton dédié apparaît à
+ * la place. Tant que le joueur ne clique pas dessus, il peut toujours jouer
+ * une carte valide et la partie continue normalement.
+ */
+function traiterTerminerPartieBlocage(state: GameState, joueurId: string, timestamp: number): GameState {
+  if (state.phase !== 'enCours') {
+    throw new Error(`Impossible de terminer la partie ici : phase actuelle = ${state.phase}.`);
+  }
+  if (joueurId !== joueurActifId(state)) {
+    throw new Error(`Ce n'est pas le tour du joueur ${joueurId}.`);
+  }
+
+  const enAttaque = state.compteurAttaque > 0;
+  const nombreAPiocher = enAttaque ? state.compteurAttaque : 1;
+
+  // On revalide côté moteur (défense en profondeur) que la pioche est
+  // réellement impossible, plutôt que de faire confiance à l'UI seule.
+  const resultat = piocherCartes(state, nombreAPiocher);
+  if (!resultat.bloque) {
+    throw new Error("La pioche est encore possible : impossible de terminer la partie dans ce contexte.");
+  }
+
+  return {
+    ...state,
+    phase: 'bloque',
+    raisonBlocage: resultat.raison,
+    evenements: ajouterEvenement(state.evenements, {
+      type: 'BLOQUE',
+      joueurId,
+      detail: { raison: resultat.raison, parChoixJoueur: true },
+      timestamp,
+    }),
   };
 }
 
@@ -271,6 +333,8 @@ export function appliquerAction(state: GameState, action: GameAction): GameState
       return traiterPartirEnBanque(state, action.joueurId, action.timestamp);
     case 'CHOISIR_ENSEIGNE':
       return traiterChoisirEnseigne(state, action.joueurId, action.enseigne, action.timestamp);
+    case 'TERMINER_PARTIE_BLOCAGE':
+      return traiterTerminerPartieBlocage(state, action.joueurId, action.timestamp);
     default: {
       const _exhaustive: never = action;
       throw new Error(`Action inconnue : ${JSON.stringify(_exhaustive)}`);

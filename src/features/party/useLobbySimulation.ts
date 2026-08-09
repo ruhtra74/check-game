@@ -10,6 +10,13 @@ interface OptionsLobby {
   nomPartie: string;
   /** Pseudo de l'hôte fictif, uniquement utilisé en mode invite. */
   hoteNomSiInvite?: string;
+  /**
+   * Si fourni (ex. retour depuis une partie interrompue faute de cartes),
+   * pré-remplit le lobby avec ces joueurs plutôt que de démarrer la
+   * simulation d'arrivée depuis zéro. L'appareil courant reprend
+   * automatiquement le rôle d'hôte.
+   */
+  joueursExistants?: { id: string; pseudo: string; emoji?: string }[];
 }
 
 /**
@@ -19,34 +26,62 @@ interface OptionsLobby {
  * attendant la vraie synchronisation LAN (Phase 4). Les écrans qui
  * consomment ce hook n'auront pas à changer à ce moment-là.
  */
-export function useLobbySimulation({ mode, nomPartie, hoteNomSiInvite }: OptionsLobby) {
+export function useLobbySimulation({ mode, nomPartie, hoteNomSiInvite, joueursExistants }: OptionsLobby) {
   const monId = useMemo(() => appStorage.getPlayerUuid(), []);
   const monPseudo = useMemo(() => appStorage.getPseudo() ?? 'Joueur', []);
   const monEmoji = useMemo(() => emojiPourAvatarId(appStorage.getAvatarId()), []);
 
   const [etat, setEtat] = useState<EtatLobby>(() => {
     const config = appStorage.getGameConfig();
-    const joueurs: JoueurLobby[] =
-      mode === 'hote'
-        ? [{ id: monId, pseudo: monPseudo, emoji: monEmoji, estHote: true, selectionne: true, pret: false }]
-        : [
-            {
-              id: 'hote-mock',
-              pseudo: hoteNomSiInvite ?? 'Hôte',
-              emoji: '😀',
-              estHote: true,
-              selectionne: true,
-              pret: false,
-            },
-            { id: monId, pseudo: monPseudo, emoji: monEmoji, estHote: false, selectionne: true, pret: false },
-          ];
+
+    let joueurs: JoueurLobby[];
+    if (joueursExistants && joueursExistants.length > 0) {
+      // Retour depuis une partie interrompue : on recompose le lobby avec
+      // les joueurs qui étaient encore en lice. L'appareil courant reprend
+      // le rôle d'hôte, peu importe qui l'était avant.
+      joueurs = joueursExistants.map((j) => ({
+        id: j.id,
+        pseudo: j.pseudo,
+        emoji: j.emoji,
+        estHote: j.id === monId,
+        selectionne: true,
+        pret: false,
+      }));
+      if (!joueurs.some((j) => j.id === monId)) {
+        joueurs = [
+          { id: monId, pseudo: monPseudo, emoji: monEmoji, estHote: true, selectionne: true, pret: false },
+          ...joueurs,
+        ];
+      }
+    } else if (mode === 'hote') {
+      joueurs = [{ id: monId, pseudo: monPseudo, emoji: monEmoji, estHote: true, selectionne: true, pret: false }];
+    } else {
+      joueurs = [
+        {
+          id: 'hote-mock',
+          pseudo: hoteNomSiInvite ?? 'Hôte',
+          emoji: '😀',
+          estHote: true,
+          selectionne: true,
+          pret: false,
+        },
+        { id: monId, pseudo: monPseudo, emoji: monEmoji, estHote: false, selectionne: true, pret: false },
+      ];
+    }
+
     return { nomPartie, config, joueurs, phase: 'attenteJoueurs' };
   });
 
   // Combien de joueurs fictifs la simulation va faire arriver au total.
   // Purement pour rythmer la démo — n'a rien à voir avec config.nbJoueurs,
   // qui lui reflète le nombre RÉEL de joueurs (voir effet plus bas).
-  const capaciteSimuleeRef = useRef(3 + Math.floor(Math.random() * 4)); // entre 3 et 6
+  // Si on revient d'une partie interrompue, on ne simule aucune arrivée
+  // supplémentaire : la liste fournie est déjà celle qu'on veut afficher.
+  const capaciteSimuleeRef = useRef(
+    joueursExistants && joueursExistants.length > 0
+      ? joueursExistants.length
+      : 3 + Math.floor(Math.random() * 4) // entre 3 et 6
+  );
 
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   useEffect(() => () => timers.current.forEach(clearTimeout), []);

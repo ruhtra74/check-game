@@ -106,7 +106,13 @@ export interface GameState {
 export type GameAction =
   | { type: 'JOUER_CARTE'; joueurId: string; carteId: string; timestamp: number }
   | { type: 'PARTIR_EN_BANQUE'; joueurId: string; timestamp: number }
-  | { type: 'CHOISIR_ENSEIGNE'; joueurId: string; enseigne: Suit; timestamp: number };
+  | { type: 'CHOISIR_ENSEIGNE'; joueurId: string; enseigne: Suit; timestamp: number }
+  // Déclenchée explicitement par le joueur actif quand la pioche n'est plus
+  // possible (banque + défausse recyclable insuffisantes). Contrairement à
+  // PARTIR_EN_BANQUE, ceci ne peut PAS survenir automatiquement : c'est un
+  // choix conscient du joueur qui a la main, tant qu'il n'a pas cliqué la
+  // partie continue normalement (il peut toujours déposer une carte valide).
+  | { type: 'TERMINER_PARTIE_BLOCAGE'; joueurId: string; timestamp: number };
 
 // ----------------------------------------------------------------------------
 // Événements (pour déclencher animations/notifications côté UI)

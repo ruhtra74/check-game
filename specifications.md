@@ -248,3 +248,12 @@ Pour éviter que les manches à beaucoup de joueurs (ex. 8-10) ne s'éternisent 
 
 *   **Seuil de majorité du vote (section G.2)** : fixé par défaut à majorité simple. À confirmer si tu préfères l'unanimité, ou un seuil configurable.
 *   Le classement affiché en fin de tournoi pourra combiner : position finale (éliminé à quelle manche) + temps cumulés, si souhaité plus tard pour un système de score global.
+---
+
+## I. L'As comme dernière carte, cas particulier à 2 joueurs en lice
+
+**Décision :** Lorsqu'il ne reste que **deux joueurs non qualifiés** en train de s'affronter dans une manche (que la manche compte 2 joueurs au total ou plus, si les autres sont déjà qualifiés), poser son As comme **dernière carte de la main** ne termine PAS immédiatement la manche.
+
+Puisque l'As redonne la main au même joueur dans ce cas (règle 4.3), celui-ci doit rejouer immédiatement. N'ayant plus aucune carte, il est alors contraint de partir en banque (piocher) — c'est cette pioche, et non le dépôt de l'As, qui met fin normalement à son tour. Le joueur n'est donc PAS qualifié ("Games") en posant cet As ; il ne le sera que s'il vide de nouveau sa main plus tard dans la manche par un dépôt de carte normal.
+
+**À partir de 3 joueurs non qualifiés en lice**, ce cas ne se produit pas : poser son As comme dernière carte qualifie immédiatement le joueur (spec 5.2), car l'effet de saut de l'As ne redonne pas la main au joueur actif dans cette configuration (addendum B) — il peut donc terminer la manche directement de cette façon.

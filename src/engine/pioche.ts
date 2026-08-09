@@ -56,3 +56,14 @@ export function piocherCartes(state: GameState, nombre: number): ResultatPioche 
 
   return { bloque: false, cartes, banque, pileCentrale: pile };
 }
+
+/**
+ * Vérifie si une pioche de `nombre` cartes serait possible dans l'état actuel
+ * (banque + recyclage de la défausse sous la carte visible), SANS modifier
+ * l'état. Sert à l'UI pour désactiver l'action de pioche/banque avant même
+ * de la tenter, plutôt que de laisser le joueur déclencher un blocage
+ * involontairement.
+ */
+export function peutPiocher(state: GameState, nombre: number): boolean {
+  return !piocherCartes(state, nombre).bloque;
+}
