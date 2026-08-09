@@ -298,7 +298,7 @@ describe('Check, Games et fin de manche', () => {
       debutMancheTimestamp: 1000,
       joueurs: [
         { id: J1.id, nom: J1.nom, main: [carte('coeur', '9', 'derniere')], qualifie: false },
-        { id: J2.id, nom: J2.nom, main: [carte('pique', '4')], qualifie: true, tempsQualificationMs: 500 },
+        { id: J2.id, nom: J2.nom, main: [carte('pique', '4')], qualifie: false },
       ],
     });
     const s2 = appliquerAction(state, {

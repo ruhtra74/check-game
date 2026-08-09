@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Text, View } from 'react-native';
+import { Switch, Text, View } from 'react-native';
 import { appStorage } from '../../storage';
-import { Button, ScreenHeader, TextField } from '../../components';
+import { Button, Card, ScreenHeader, TextField } from '../../components';
 import { useTheme } from '../../theme';
 import { resolveTextStyle } from '../../theme/textStyle';
 import type { RootStackParamList } from '../../app/navigation/RootNavigator';
@@ -18,12 +18,15 @@ function nomParDefaut(): string {
 export function CreerPartieScreen({ navigation }: Props) {
   const theme = useTheme();
   const body = resolveTextStyle(theme, 'body');
+  const bodyMedium = resolveTextStyle(theme, 'bodyMedium');
+  const caption = resolveTextStyle(theme, 'caption');
 
   const [nom, setNom] = useState(nomParDefaut());
+  const [estReseau, setEstReseau] = useState(false);
 
   function creer() {
     const nomFinal = nom.trim() || nomParDefaut();
-    navigation.navigate('Lobby', { mode: 'hote', nomPartie: nomFinal });
+    navigation.navigate('Lobby', { mode: 'hote', nomPartie: nomFinal, estReseau });
   }
 
   return (
@@ -31,11 +34,29 @@ export function CreerPartieScreen({ navigation }: Props) {
       <ScreenHeader title="Créer une partie" onBack={navigation.goBack} />
 
       <Text style={[body, { color: theme.colors.textSecondary, marginBottom: theme.spacing.xl }]}>
-        Ce nom permettra aux autres joueurs de reconnaître ta partie quand ils chercheront à la
-        rejoindre sur le réseau.
+        Configure ta partie. Tu peux jouer localement sur le même téléphone (Pass-and-Play) ou activer le mode réseau LAN.
       </Text>
 
       <TextField label="Nom de la partie" value={nom} onChangeText={setNom} maxLength={30} autoFocus />
+
+      <Card style={{ marginTop: theme.spacing.lg }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View style={{ flex: 1, paddingRight: theme.spacing.md }}>
+            <Text style={[bodyMedium, { color: theme.colors.textPrimary }]}>Partie réseau (LAN / Wi-Fi)</Text>
+            <Text style={[caption, { color: theme.colors.textSecondary, marginTop: 2 }]}>
+              {estReseau
+                ? 'Les autres joueurs se connecteront depuis leurs Smartphones.'
+                : 'Mode local (un seul appareil transmis de main en main).'}
+            </Text>
+          </View>
+          <Switch
+            value={estReseau}
+            onValueChange={setEstReseau}
+            trackColor={{ false: theme.colors.border, true: theme.accent[500] }}
+            thumbColor={theme.colors.surface}
+          />
+        </View>
+      </Card>
 
       <View style={{ marginTop: theme.spacing.xxl }}>
         <Button label="DEVENIR L'HÔTE" onPress={creer} />

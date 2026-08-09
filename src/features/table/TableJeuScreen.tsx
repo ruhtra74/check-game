@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Animated, Pressable, ScrollView, Text, View } from 'react-native';
 import { Avatar, Button, Card, Dialog, PlayingCard, SYMBOLES_ENSEIGNE } from '../../components';
 import { useTheme } from '../../theme';
 import { resolveTextStyle } from '../../theme/textStyle';
@@ -12,6 +12,7 @@ import {
   peutPiocher,
   type Card as CarteMoteur,
   type GameState,
+  type PlayerState,
   type Suit,
   type TournoiState,
 } from '../../engine';
@@ -51,6 +52,8 @@ export function TableJeuScreen({ navigation, route }: Props) {
   const body = resolveTextStyle(theme, 'body');
   const bodyMedium = resolveTextStyle(theme, 'bodyMedium');
   const caption = resolveTextStyle(theme, 'caption');
+
+  const monId = appStorage.getPlayerUuid();
 
   const {
     tournoi,
@@ -99,7 +102,7 @@ export function TableJeuScreen({ navigation, route }: Props) {
   }, [manche.evenements, infosAffichage]);
 
   function quitter() {
-    retourAccueil(navigation);
+    retournerAuLobbyApresBlocage();
   }
 
   function retournerAuLobbyApresBlocage() {
@@ -143,7 +146,6 @@ export function TableJeuScreen({ navigation, route }: Props) {
   // ---------------------------------------------------------------------
 
   const monJoueurEtat = manche.joueurs.find((j) => j.id === joueurActifId);
-  const adversaires = manche.joueurs.filter((j) => j.id !== joueurActifId);
   const top = carteVisible(manche);
 
   // La pioche (bouton "Banque") peut être impossible si la banque et la
@@ -175,21 +177,28 @@ export function TableJeuScreen({ navigation, route }: Props) {
         </Card>
       )}
 
-      {/* Adversaires */}
+      {/* Liste fixe des joueurs (ordre physique du lobby) */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ gap: theme.spacing.lg, paddingBottom: theme.spacing.md }}
       >
-        {adversaires.map((joueur) => {
-          const infos = infosAffichage.get(joueur.id);
+        {joueurs.map((jInitial) => {
+          const joueurEtat = manche.joueurs.find((j) => j.id === jInitial.id);
+          if (!joueurEtat) return null; // Éliminé du tournoi ou absent
+
+          const infos = infosAffichage.get(jInitial.id);
+          const estActif = joueurEtat.id === joueurActifId;
+          const estMoi = jInitial.id === monId;
+
           return (
-            <View key={joueur.id} style={{ alignItems: 'center', opacity: joueur.qualifie ? 0.5 : 1 }}>
-              <Avatar nom={infos?.nom ?? '?'} emoji={infos?.emoji} size={44} />
-              <Text style={[caption, { color: theme.colors.textSecondary, marginTop: 2 }]}>
-                {infos?.nom} · {joueur.qualifie ? '🏆' : joueur.main.length}
-              </Text>
-            </View>
+            <JoueurEntete
+              key={jInitial.id}
+              joueurEtat={joueurEtat}
+              infos={infos}
+              estActif={estActif}
+              estMoi={estMoi}
+            />
           );
         })}
       </ScrollView>
@@ -238,12 +247,17 @@ export function TableJeuScreen({ navigation, route }: Props) {
 
       {/* Main du joueur actif */}
       <Text style={[h2, { color: theme.colors.textPrimary, marginBottom: theme.spacing.sm }]}>
-        Main de {infosAffichage.get(joueurActifId ?? '')?.nom ?? '...'}
+        {joueurActifId === monId ? 'Votre main' : `Main de ${infosAffichage.get(joueurActifId ?? '')?.nom ?? '...'}`}
       </Text>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ gap: theme.spacing.sm, paddingBottom: theme.spacing.lg }}
+        style={{ overflow: 'visible' }}
+        contentContainerStyle={{
+          gap: theme.spacing.sm,
+          paddingTop: theme.spacing.md,
+          paddingBottom: theme.spacing.md,
+        }}
       >
         {(monJoueurEtat?.main ?? []).map((carte) => {
           const jouable = estJouable(carte);
@@ -311,7 +325,11 @@ export function TableJeuScreen({ navigation, route }: Props) {
           { label: 'Quitter', variant: 'danger', onPress: quitter },
           { label: 'Annuler', variant: 'ghost', onPress: () => setConfirmerSortie(false) },
         ]}
-      />
+      >
+        <Text style={[body, { color: theme.colors.textSecondary, textAlign: 'center' }]}>
+          Vous allez quitter la manche en cours et retourner au lobby de la partie.
+        </Text>
+      </Dialog>
 
       <Dialog
         visible={confirmerVote}
@@ -525,8 +543,58 @@ function VueFinTournoi({
       </Card>
 
       <View style={{ marginTop: theme.spacing.xl }}>
-        <Button label="RETOUR À L'ACCUEIL" onPress={onQuitter} />
+        <Button label="RETOUR AU LOBBY" onPress={onQuitter} />
       </View>
     </ShellLayout>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Composants internes
+// ---------------------------------------------------------------------
+
+function JoueurEntete({
+  joueurEtat,
+  infos,
+  estActif,
+  estMoi,
+}: {
+  joueurEtat: PlayerState;
+  infos?: JoueurAffichage;
+  estActif: boolean;
+  estMoi: boolean;
+}) {
+  const theme = useTheme();
+  const caption = resolveTextStyle(theme, 'caption');
+
+  const scale = useRef(new Animated.Value(1)).current;
+  const opacity = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (estActif && !joueurEtat.qualifie) {
+      Animated.parallel([
+        Animated.spring(scale, { toValue: 1.15, useNativeDriver: true, friction: 5 }),
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(opacity, { toValue: 0.4, duration: 600, useNativeDriver: true }),
+            Animated.timing(opacity, { toValue: 1, duration: 600, useNativeDriver: true }),
+          ])
+        ),
+      ]).start();
+    } else {
+      scale.setValue(1);
+      opacity.setValue(joueurEtat.qualifie ? 0.5 : 1);
+    }
+  }, [estActif, joueurEtat.qualifie, scale, opacity]);
+
+  const nomAffichage = estMoi ? 'Vous' : (infos?.nom ?? '?');
+
+  return (
+    <Animated.View style={{ alignItems: 'center', transform: [{ scale }], opacity }}>
+      <Avatar nom={nomAffichage} emoji={infos?.emoji} size={44} />
+      <Text style={[caption, { color: theme.colors.textSecondary, marginTop: 2, fontWeight: estActif ? 'bold' : 'normal' }]}>
+        {nomAffichage} · {joueurEtat.qualifie ? '🏆' : joueurEtat.main.length}
+      </Text>
+    </Animated.View>
   );
 }
