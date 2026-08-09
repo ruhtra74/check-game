@@ -6,6 +6,7 @@ import { useTheme } from '../../theme';
 import { resolveTextStyle } from '../../theme/textStyle';
 import type { RootStackParamList } from '../../app/navigation/RootNavigator';
 import { ShellLayout } from '../shell/ShellLayout';
+import type { JoueurAffichage } from '../table/useMoteurJeu';
 import { useLobbySimulation } from './useLobbySimulation';
 import type { JoueurLobby } from './types';
 
@@ -33,10 +34,15 @@ export function LobbyScreen({ navigation, route }: Props) {
   }, [etat.phase]);
 
   useEffect(() => {
-    if (etat.phase === 'partieLancee') {
-      navigation.replace('TableJeu');
-    }
-  }, [etat.phase, navigation]);
+    if (etat.phase !== 'partieLancee') return;
+    const joueursPourMoteur: JoueurAffichage[] = etat.joueurs
+      .filter((j) => j.selectionne)
+      .map((j) => ({ id: j.id, nom: j.pseudo, emoji: j.emoji }));
+    navigation.replace('TableJeu', { joueurs: joueursPourMoteur, config: etat.config });
+    // Volontairement limité à etat.phase : on ne veut déclencher la
+    // navigation qu'une seule fois, au moment de la transition de phase.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [etat.phase]);
 
   const enAttenteMaConfirmation =
     etat.phase === 'confirmationDemarrage' && monJoueur?.selectionne && monJoueur.pret === false;

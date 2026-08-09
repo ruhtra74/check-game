@@ -18,12 +18,14 @@ const DIMENSIONS = {
   lg: { largeur: 72, hauteur: 100, police: 24 },
 };
 
-const SYMBOLES: Record<'pique' | 'coeur' | 'trefle' | 'carreau', string> = {
+export const SYMBOLES_ENSEIGNE: Record<'pique' | 'coeur' | 'trefle' | 'carreau', string> = {
   pique: '♠',
   coeur: '♥',
   trefle: '♣',
   carreau: '♦',
 };
+
+const SYMBOLES = SYMBOLES_ENSEIGNE;
 
 function estRouge(suit: 'pique' | 'coeur' | 'trefle' | 'carreau'): boolean {
   return suit === 'coeur' || suit === 'carreau';

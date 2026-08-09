@@ -14,6 +14,8 @@ import { CreerPartieScreen } from '../../features/party/CreerPartieScreen';
 import { RejoindrePartieScreen } from '../../features/party/RejoindrePartieScreen';
 import { LobbyScreen } from '../../features/party/LobbyScreen';
 import { TableJeuScreen } from '../../features/table/TableJeuScreen';
+import type { JoueurAffichage } from '../../features/table/useMoteurJeu';
+import type { GameConfig } from '../../engine';
 import { appStorage } from '../../storage';
 
 // Ce type grandit au fil de l'implémentation des écrans (Phase 5 : vrai moteur + réseau).
@@ -35,7 +37,7 @@ export type RootStackParamList = {
   Lobby:
     | { mode: 'hote'; nomPartie: string }
     | { mode: 'invite'; nomPartie: string; hoteNom: string };
-  TableJeu: undefined;
+  TableJeu: { joueurs: JoueurAffichage[]; config: GameConfig };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();

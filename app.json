@@ -12,17 +12,38 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "Cette app utilise le réseau local pour découvrir et rejoindre des parties avec d'autres joueurs.",
+        "NSBonjourServices": [
+          "_cardgame._tcp"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": false
+      "edgeToEdgeEnabled": false,
+      "package": "com.ruhtra.checkgame",
+      "permissions": [
+        "ACCESS_WIFI_STATE",
+        "CHANGE_WIFI_MULTICAST_STATE",
+        "ACCESS_NETWORK_STATE",
+        "INTERNET"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "714dd912-e5c8-4d6a-b758-f4d5f42f5dee"
+      }
+    },
+    "plugins": [
+      "expo-font"
+    ]
   }
 }
