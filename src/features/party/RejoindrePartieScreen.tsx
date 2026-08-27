@@ -6,7 +6,7 @@ import { useTheme } from '../../theme';
 import { resolveTextStyle } from '../../theme/textStyle';
 import type { RootStackParamList } from '../../app/navigation/RootNavigator';
 import { ShellLayout } from '../shell/ShellLayout';
-import { listerPartiesDecouvertes } from './mockPartyService';
+import { DiscoveryService, type DiscoveredGame } from '../../network/discovery';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'RejoindrePartie'>;
 
@@ -15,15 +15,38 @@ export function RejoindrePartieScreen({ navigation }: Props) {
   const bodyMedium = resolveTextStyle(theme, 'bodyMedium');
   const caption = resolveTextStyle(theme, 'caption');
 
-  // Mock pour l'instant — sera remplacé par la vraie découverte réseau (mDNS) en Phase 4.
-  const parties = listerPartiesDecouvertes();
+  const [parties, setParties] = React.useState<DiscoveredGame[]>([]);
+
+  React.useEffect(() => {
+    // Démarre l'écoute des services mDNS (Local Wi-Fi)
+    DiscoveryService.startScanning(
+      (nouveauHost) => {
+        setParties((actuel) => {
+          const existeDeja = actuel.findIndex((p) => p.id === nouveauHost.id);
+          if (existeDeja >= 0) {
+            const up = [...actuel];
+            up[existeDeja] = nouveauHost;
+            return up;
+          }
+          return [...actuel, nouveauHost];
+        });
+      },
+      (serviceNameLost) => {
+        setParties((actuel) => actuel.filter((p) => p.id !== serviceNameLost));
+      }
+    );
+
+    return () => {
+      DiscoveryService.stopScanning();
+    };
+  }, []);
 
   return (
     <ShellLayout ongletActif={null} masquerBottomNav>
       <ScreenHeader title="Rejoindre une partie" onBack={navigation.goBack} />
 
       <Text style={[caption, { color: theme.colors.textSecondary, marginBottom: theme.spacing.lg }]}>
-        Parties trouvées sur le réseau
+        Recherche de parties sur le réseau local Wi-Fi...
       </Text>
 
       <View style={{ gap: theme.spacing.md }}>
@@ -33,18 +56,21 @@ export function RejoindrePartieScreen({ navigation }: Props) {
             onPress={() =>
               navigation.navigate('Lobby', {
                 mode: 'invite',
-                nomPartie: partie.nom,
+                nomPartie: partie.nomPartie,
                 hoteNom: partie.hoteNom,
+                estReseau: true,
+                hostIp: partie.hostIp,
+                hostPort: partie.port,
               })
             }
           >
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View>
-                <Text style={[bodyMedium, { color: theme.colors.textPrimary }]}>{partie.nom}</Text>
+                <Text style={[bodyMedium, { color: theme.colors.textPrimary }]}>{partie.nomPartie}</Text>
                 <Text style={[caption, { color: theme.colors.textSecondary }]}>Hôte : {partie.hoteNom}</Text>
               </View>
               <Text style={[caption, { color: theme.accent[600] }]}>
-                {partie.nbJoueurs}/{partie.nbJoueursMax}
+                (Réseau LAN)
               </Text>
             </View>
           </Card>

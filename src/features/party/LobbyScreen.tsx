@@ -8,7 +8,10 @@ import type { RootStackParamList } from '../../app/navigation/RootNavigator';
 import { ShellLayout } from '../shell/ShellLayout';
 import type { JoueurAffichage } from '../table/useMoteurJeu';
 import { useLobbySimulation } from './useLobbySimulation';
+import { useLobbyNetwork } from './useLobbyNetwork';
 import type { JoueurLobby } from './types';
+
+import { NetworkManager } from '../../network/NetworkManager';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Lobby'>;
 
@@ -18,11 +21,17 @@ export function LobbyScreen({ navigation, route }: Props) {
   const caption = resolveTextStyle(theme, 'caption');
 
   const { mode, nomPartie } = route.params;
+  const estReseau = route.params.estReseau ?? false;
   const hoteNomSiInvite = route.params.mode === 'invite' ? route.params.hoteNom : undefined;
   const joueursExistants = route.params.mode === 'hote' ? route.params.joueursExistants : undefined;
+  const hostIp = route.params.mode === 'invite' ? route.params.hostIp : undefined;
+  const hostPort = route.params.mode === 'invite' ? route.params.hostPort : undefined;
 
+  // Bascule transparente : même interface de retour pour les deux hooks.
+  const lobbyLocal = useLobbySimulation({ mode, nomPartie, hoteNomSiInvite, joueursExistants });
+  const lobbyReseau = useLobbyNetwork({ mode, nomPartie, hoteNomSiInvite, hostIp, hostPort });
   const { etat, monId, basculerSelection, modifierConfig, demarrerPartie, confirmerPret, joueursSelectionnes, tousPrets } =
-    useLobbySimulation({ mode, nomPartie, hoteNomSiInvite, joueursExistants });
+    estReseau ? lobbyReseau : lobbyLocal;
 
   const jeSuisHote = mode === 'hote';
   const monJoueur = etat.joueurs.find((j) => j.id === monId);
@@ -39,7 +48,7 @@ export function LobbyScreen({ navigation, route }: Props) {
     const joueursPourMoteur: JoueurAffichage[] = etat.joueurs
       .filter((j) => j.selectionne)
       .map((j) => ({ id: j.id, nom: j.pseudo, emoji: j.emoji }));
-    navigation.replace('TableJeu', { joueurs: joueursPourMoteur, config: etat.config });
+    navigation.replace('TableJeu', { joueurs: joueursPourMoteur, config: etat.config, estReseau, modeReseau: mode });
     // Volontairement limité à etat.phase : on ne veut déclencher la
     // navigation qu'une seule fois, au moment de la transition de phase.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -51,9 +60,14 @@ export function LobbyScreen({ navigation, route }: Props) {
 
   const nbPrets = etat.joueurs.filter((j) => j.selectionne && j.pret).length;
 
+  function quitterLobby() {
+    NetworkManager.teardown();
+    navigation.goBack();
+  }
+
   return (
     <ShellLayout ongletActif={null} masquerBottomNav>
-      <ScreenHeader title={etat.nomPartie} onBack={navigation.goBack} />
+      <ScreenHeader title={etat.nomPartie} onBack={quitterLobby} />
 
       <Text style={[caption, { color: theme.colors.textSecondary, marginBottom: theme.spacing.lg }]}>
         Hôte : {hote?.pseudo ?? '...'}

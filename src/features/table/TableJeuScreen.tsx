@@ -19,12 +19,15 @@ import {
 import type { RootStackParamList } from '../../app/navigation/RootNavigator';
 import { ShellLayout } from '../shell/ShellLayout';
 import { useMoteurJeu, type JoueurAffichage } from './useMoteurJeu';
+import { useMoteurJeuReseau } from './useMoteurJeuReseau';
+import { NetworkManager } from '../../network/NetworkManager';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'TableJeu'>;
 
 const ENSEIGNES: Suit[] = ['pique', 'coeur', 'trefle', 'carreau'];
 
 function retourAccueil(navigation: Props['navigation']) {
+  NetworkManager.teardown();
   navigation.reset({ index: 0, routes: [{ name: 'Accueil' }] });
 }
 
@@ -45,7 +48,7 @@ function construireJoueursPourLobby(
 }
 
 export function TableJeuScreen({ navigation, route }: Props) {
-  const { joueurs, config } = route.params;
+  const { joueurs, config, estReseau, modeReseau } = route.params;
   const theme = useTheme();
   const h1 = resolveTextStyle(theme, 'h1');
   const h2 = resolveTextStyle(theme, 'h2');
@@ -55,6 +58,9 @@ export function TableJeuScreen({ navigation, route }: Props) {
 
   const monId = appStorage.getPlayerUuid();
 
+  // Bascule transparente entre le moteur local et le moteur réseau.
+  const moteurLocal = useMoteurJeu({ joueurs, config });
+  const moteurReseau = useMoteurJeuReseau({ joueurs, config, modeReseau: modeReseau ?? 'hote' });
   const {
     tournoi,
     manche,
@@ -67,7 +73,7 @@ export function TableJeuScreen({ navigation, route }: Props) {
     terminerPartieBlocage,
     terminerMancheParVote,
     continuerVersProchaineManche,
-  } = useMoteurJeu({ joueurs, config });
+  } = estReseau ? moteurReseau : moteurLocal;
 
   const [selectionId, setSelectionId] = useState<string | null>(null);
   const [revele, setRevele] = useState(false);

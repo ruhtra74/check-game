@@ -44,8 +44,8 @@ export type RootStackParamList = {
         // repartir d'une simulation d'arrivée vide.
         joueursExistants?: { id: string; pseudo: string; emoji?: string }[];
       }
-    | { mode: 'invite'; nomPartie: string; hoteNom: string; estReseau?: boolean };
-  TableJeu: { joueurs: JoueurAffichage[]; config: GameConfig };
+    | { mode: 'invite'; nomPartie: string; hoteNom: string; estReseau?: boolean; hostIp?: string; hostPort?: number };
+  TableJeu: { joueurs: JoueurAffichage[]; config: GameConfig; estReseau?: boolean; modeReseau?: 'hote' | 'invite' };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
