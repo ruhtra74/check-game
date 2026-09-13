@@ -8,18 +8,31 @@ import type { RootStackParamList } from '../../app/navigation/RootNavigator';
 import { ShellLayout } from '../shell/ShellLayout';
 import type { JoueurAffichage } from '../table/useMoteurJeu';
 import { useLobbySimulation } from './useLobbySimulation';
-import { useLobbyNetwork } from './useLobbyNetwork';
-import type { JoueurLobby } from './types';
+import { useLobbyReseauHote } from './useLobbyReseau';
+import { useLobbyClient } from './useLobbyClient';
+import type { EtatLobby, JoueurLobby } from './types';
+import type { GameConfig } from '../../engine';
 
 import { NetworkManager } from '../../network/NetworkManager';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Lobby'>;
 
-export function LobbyScreen({ navigation, route }: Props) {
-  const theme = useTheme();
-  const bodyMedium = resolveTextStyle(theme, 'bodyMedium');
-  const caption = resolveTextStyle(theme, 'caption');
+export function LobbyScreen(props: Props) {
+  const { route } = props;
+  const estReseau = route.params.estReseau ?? false;
 
+  if (estReseau) {
+    if (route.params.mode === 'hote') {
+      return <LobbyScreenHoteReseau {...props} />;
+    } else {
+      return <LobbyScreenClientReseau {...props} />;
+    }
+  }
+
+  return <LobbyScreenHotseat {...props} />;
+}
+
+function LobbyScreenHotseat({ navigation, route }: Props) {
   const { mode, nomPartie } = route.params;
   const estReseau = route.params.estReseau ?? false;
   const hoteNomSiInvite = route.params.mode === 'invite' ? route.params.hoteNom : undefined;
@@ -27,11 +40,93 @@ export function LobbyScreen({ navigation, route }: Props) {
   const hostIp = route.params.mode === 'invite' ? route.params.hostIp : undefined;
   const hostPort = route.params.mode === 'invite' ? route.params.hostPort : undefined;
 
-  // Bascule transparente : même interface de retour pour les deux hooks.
-  const lobbyLocal = useLobbySimulation({ mode, nomPartie, hoteNomSiInvite, joueursExistants });
-  const lobbyReseau = useLobbyNetwork({ mode, nomPartie, hoteNomSiInvite, hostIp, hostPort });
-  const { etat, monId, basculerSelection, modifierConfig, demarrerPartie, confirmerPret, joueursSelectionnes, tousPrets } =
-    estReseau ? lobbyReseau : lobbyLocal;
+  const controller = useLobbySimulation({ mode, nomPartie, hoteNomSiInvite, joueursExistants });
+
+  return (
+    <LobbyView
+      navigation={navigation}
+      mode={mode}
+      estReseau={false}
+      {...controller}
+    />
+  );
+}
+
+function LobbyScreenHoteReseau({ navigation, route }: Props) {
+  const { nomPartie } = route.params;
+  const joueursExistants = route.params.mode === 'hote' ? route.params.joueursExistants : undefined;
+
+  const controller = useLobbyReseauHote({ nomPartie, joueursExistants });
+
+  return (
+    <LobbyView
+      navigation={navigation}
+      mode="hote"
+      estReseau={true}
+      hoteErreur={controller.hoteErreur}
+      {...controller}
+    />
+  );
+}
+
+function LobbyScreenClientReseau({ navigation, route }: Props) {
+  const { nomPartie } = route.params;
+  const hostIp = route.params.mode === 'invite' ? route.params.hostIp ?? '127.0.0.1' : '127.0.0.1';
+  const port = route.params.mode === 'invite' ? route.params.port : undefined;
+  const hoteNom = route.params.mode === 'invite' ? route.params.hoteNom : 'Hôte';
+
+  const controller = useLobbyClient({ hostIp, port, nomPartie, hoteNom });
+
+  return (
+    <LobbyView
+      navigation={navigation}
+      mode="invite"
+      estReseau={true}
+      hostIp={hostIp}
+      port={port}
+      hoteDeconnecte={controller.hoteDeconnecte}
+      {...controller}
+    />
+  );
+}
+
+interface LobbyViewProps {
+  navigation: Props['navigation'];
+  mode: 'hote' | 'invite';
+  estReseau: boolean;
+  hostIp?: string;
+  port?: number;
+  etat: EtatLobby;
+  monId: string;
+  basculerSelection: (id: string) => void;
+  modifierConfig: (patch: Partial<GameConfig>) => void;
+  demarrerPartie: () => void;
+  confirmerPret: (pret: boolean) => void;
+  joueursSelectionnes: JoueurLobby[];
+  tousPrets: boolean;
+  hoteErreur?: string | null;
+  hoteDeconnecte?: string | null;
+}
+
+function LobbyView({
+  navigation,
+  mode,
+  estReseau,
+  hostIp,
+  port,
+  etat,
+  monId,
+  basculerSelection,
+  modifierConfig,
+  demarrerPartie,
+  confirmerPret,
+  joueursSelectionnes,
+  hoteErreur,
+  hoteDeconnecte,
+}: LobbyViewProps) {
+  const theme = useTheme();
+  const bodyMedium = resolveTextStyle(theme, 'bodyMedium');
+  const caption = resolveTextStyle(theme, 'caption');
 
   const jeSuisHote = mode === 'hote';
   const monJoueur = etat.joueurs.find((j) => j.id === monId);
@@ -39,6 +134,7 @@ export function LobbyScreen({ navigation, route }: Props) {
   const maxCartesPourJoueurs = Math.floor(52 / etat.config.nbJoueurs);
 
   const [dialogFermee, setDialogFermee] = useState(false);
+
   useEffect(() => {
     if (etat.phase === 'confirmationDemarrage') setDialogFermee(false);
   }, [etat.phase]);
@@ -48,9 +144,15 @@ export function LobbyScreen({ navigation, route }: Props) {
     const joueursPourMoteur: JoueurAffichage[] = etat.joueurs
       .filter((j) => j.selectionne)
       .map((j) => ({ id: j.id, nom: j.pseudo, emoji: j.emoji }));
-    navigation.replace('TableJeu', { joueurs: joueursPourMoteur, config: etat.config, estReseau, modeReseau: mode });
-    // Volontairement limité à etat.phase : on ne veut déclencher la
-    // navigation qu'une seule fois, au moment de la transition de phase.
+
+    navigation.replace('TableJeu', {
+      joueurs: joueursPourMoteur,
+      config: etat.config,
+      estReseau,
+      mode: estReseau ? mode : 'hotseat',
+      hostIp,
+      port,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [etat.phase]);
 
@@ -70,8 +172,29 @@ export function LobbyScreen({ navigation, route }: Props) {
       <ScreenHeader title={etat.nomPartie} onBack={quitterLobby} />
 
       <Text style={[caption, { color: theme.colors.textSecondary, marginBottom: theme.spacing.lg }]}>
-        Hôte : {hote?.pseudo ?? '...'}
+        Hôte : {hote?.pseudo ?? '...'} {estReseau ? '(Partie Réseau LAN)' : '(Mode Local Hotseat)'}
       </Text>
+
+      {/* Alerte déconnexion hôte */}
+      {hoteDeconnecte && (
+        <Dialog
+          visible={true}
+          title="Connexion interrompue"
+          onClose={() => navigation.navigate('Accueil')}
+          actions={[{ label: 'Retour Accueil', onPress: () => navigation.navigate('Accueil') }]}
+        >
+          <Text style={[bodyMedium, { color: theme.colors.textPrimary, textAlign: 'center' }]}>
+            {hoteDeconnecte}
+          </Text>
+        </Dialog>
+      )}
+
+      {/* Alerte erreur hôte */}
+      {hoteErreur && (
+        <Card style={{ backgroundColor: theme.colors.dangerBg, marginBottom: theme.spacing.md }}>
+          <Text style={[bodyMedium, { color: theme.colors.danger }]}>{hoteErreur}</Text>
+        </Card>
+      )}
 
       {/* Joueurs connectés */}
       <Text style={[caption, { color: theme.colors.textSecondary, marginBottom: theme.spacing.xs }]}>

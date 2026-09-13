@@ -11,6 +11,7 @@ import {
   peutDeclencherVote,
   peutPiocher,
   type Card as CarteMoteur,
+  type GameConfig,
   type GameState,
   type PlayerState,
   type Suit,
@@ -19,8 +20,8 @@ import {
 import type { RootStackParamList } from '../../app/navigation/RootNavigator';
 import { ShellLayout } from '../shell/ShellLayout';
 import { useMoteurJeu, type JoueurAffichage } from './useMoteurJeu';
-import { useMoteurJeuReseau } from './useMoteurJeuReseau';
-import { NetworkManager } from '../../network/NetworkManager';
+import { useMoteurJeuHote } from './useMoteurJeuHote';
+import { useMoteurJeuClient } from './useMoteurJeuClient';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'TableJeu'>;
 
@@ -31,12 +32,6 @@ function retourAccueil(navigation: Props['navigation']) {
   navigation.reset({ index: 0, routes: [{ name: 'Accueil' }] });
 }
 
-/**
- * Construit la liste (au format attendu par l'écran Lobby) des joueurs
- * encore actifs dans le tournoi au moment du blocage — c'est cette liste
- * qu'on ramène dans le lobby pour proposer de recommencer, plutôt que de
- * tout effacer et renvoyer à l'accueil.
- */
 function construireJoueursPourLobby(
   tournoi: TournoiState,
   infosAffichage: Map<string, JoueurAffichage>
@@ -47,20 +42,71 @@ function construireJoueursPourLobby(
   });
 }
 
-export function TableJeuScreen({ navigation, route }: Props) {
-  const { joueurs, config, estReseau, modeReseau } = route.params;
-  const theme = useTheme();
-  const h1 = resolveTextStyle(theme, 'h1');
-  const h2 = resolveTextStyle(theme, 'h2');
-  const body = resolveTextStyle(theme, 'body');
-  const bodyMedium = resolveTextStyle(theme, 'bodyMedium');
-  const caption = resolveTextStyle(theme, 'caption');
+export function TableJeuScreen(props: Props) {
+  const estReseau = props.route.params.estReseau ?? false;
+  const mode = props.route.params.mode ?? (estReseau ? 'hote' : 'hotseat');
 
-  const monId = appStorage.getPlayerUuid();
+  if (estReseau) {
+    if (mode === 'hote') {
+      return <TableJeuHoteReseau {...props} />;
+    } else {
+      return <TableJeuClientReseau {...props} />;
+    }
+  }
 
-  // Bascule transparente entre le moteur local et le moteur réseau.
-  const moteurLocal = useMoteurJeu({ joueurs, config });
-  const moteurReseau = useMoteurJeuReseau({ joueurs, config, modeReseau: modeReseau ?? 'hote' });
+  return <TableJeuHotseat {...props} />;
+}
+
+function TableJeuHotseat(props: Props) {
+  const { joueurs, config } = props.route.params;
+  const controller = useMoteurJeu({ joueurs, config });
+
+  return <TableJeuContent {...props} estReseau={false} controller={controller} />;
+}
+
+function TableJeuHoteReseau(props: Props) {
+  const { joueurs, config, port } = props.route.params;
+  const controller = useMoteurJeuHote({ joueurs, config, port });
+
+  return <TableJeuContent {...props} estReseau={true} mode="hote" controller={controller} />;
+}
+
+function TableJeuClientReseau(props: Props) {
+  const { joueurs, config, hostIp = '127.0.0.1', port } = props.route.params;
+  const controller = useMoteurJeuClient({ joueurs, config, hostIp, port });
+
+  return (
+    <TableJeuContent
+      {...props}
+      estReseau={true}
+      mode="invite"
+      hoteDeconnecte={controller.hoteDeconnecte}
+      controller={controller}
+    />
+  );
+}
+
+interface TableJeuContentProps extends Props {
+  estReseau: boolean;
+  mode?: 'hote' | 'invite' | 'hotseat';
+  hoteDeconnecte?: string | null;
+  controller: {
+    tournoi: TournoiState | null;
+    manche: GameState | null;
+    config: GameConfig;
+    joueurActifId: string | null;
+    infosAffichage: Map<string, JoueurAffichage>;
+    jouerCarte: (id: string) => void;
+    partirEnBanque: () => void;
+    choisirEnseigne: (e: Suit) => void;
+    terminerPartieBlocage: () => void;
+    terminerMancheParVote: () => void;
+    continuerVersProchaineManche: () => void;
+  };
+}
+
+function TableJeuContent({ navigation, route, estReseau, hoteDeconnecte, controller }: TableJeuContentProps) {
+  const { joueurs } = route.params;
   const {
     tournoi,
     manche,
@@ -73,55 +119,98 @@ export function TableJeuScreen({ navigation, route }: Props) {
     terminerPartieBlocage,
     terminerMancheParVote,
     continuerVersProchaineManche,
-  } = estReseau ? moteurReseau : moteurLocal;
+  } = controller;
+
+  const theme = useTheme();
+  const h1 = resolveTextStyle(theme, 'h1');
+  const h2 = resolveTextStyle(theme, 'h2');
+  const body = resolveTextStyle(theme, 'body');
+  const bodyMedium = resolveTextStyle(theme, 'bodyMedium');
+  const caption = resolveTextStyle(theme, 'caption');
+
+  const monId = appStorage.getPlayerUuid();
 
   const [selectionId, setSelectionId] = useState<string | null>(null);
-  const [revele, setRevele] = useState(false);
+  // En mode réseau, la main du joueur local est toujours révélée immédiatement sur son propre téléphone
+  const [revele, setRevele] = useState(estReseau);
   const dernierActifRef = useRef(joueurActifId);
+
   useEffect(() => {
     if (dernierActifRef.current !== joueurActifId) {
       dernierActifRef.current = joueurActifId;
-      setRevele(false);
+      if (!estReseau) setRevele(false);
       setSelectionId(null);
     }
-  }, [joueurActifId]);
+  }, [joueurActifId, estReseau]);
 
   const [confirmerSortie, setConfirmerSortie] = useState(false);
   const [confirmerVote, setConfirmerVote] = useState(false);
   const [confirmerBlocage, setConfirmerBlocage] = useState(false);
 
-  // Bannière transitoire pour les événements Check / Games.
   const [messageEvenement, setMessageEvenement] = useState<string | null>(null);
   const nbEvenementsVusRef = useRef(0);
+
   useEffect(() => {
+    if (!manche) return undefined;
     const evenements = manche.evenements;
     if (evenements.length <= nbEvenementsVusRef.current) return undefined;
     const dernier = evenements[evenements.length - 1];
     nbEvenementsVusRef.current = evenements.length;
     if (dernier?.type === 'CHECK' || dernier?.type === 'GAMES') {
       const nom = infosAffichage.get(dernier.joueurId ?? '')?.nom ?? 'Un joueur';
-      setMessageEvenement(dernier.type === 'CHECK' ? `⚠️ Check ! ${nom} n'a plus qu'une carte.` : `🎉 ${nom} a fini sa main !`);
+      setMessageEvenement(
+        dernier.type === 'CHECK' ? `⚠️ Check ! ${nom} n'a plus qu'une carte.` : `🎉 ${nom} a fini sa main !`
+      );
       const t = setTimeout(() => setMessageEvenement(null), 2500);
       return () => clearTimeout(t);
     }
     return undefined;
-  }, [manche.evenements, infosAffichage]);
+  }, [manche, infosAffichage]);
+
+  if (hoteDeconnecte) {
+    return (
+      <ShellLayout ongletActif={null} masquerBottomNav>
+        <Dialog
+          visible={true}
+          title="Connexion interrompue"
+          onClose={() => retourAccueil(navigation)}
+          actions={[{ label: 'Retour Accueil', onPress: () => retourAccueil(navigation) }]}
+        >
+          <Text style={[body, { color: theme.colors.textSecondary, textAlign: 'center' }]}>
+            {hoteDeconnecte}
+          </Text>
+        </Dialog>
+      </ShellLayout>
+    );
+  }
+
+  if (!manche || !tournoi) {
+    return (
+      <ShellLayout ongletActif={null} masquerBottomNav>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={[bodyMedium, { color: theme.colors.textSecondary }]}>
+            Connexion au serveur de partie en cours...
+          </Text>
+        </View>
+      </ShellLayout>
+    );
+  }
 
   function quitter() {
     retournerAuLobbyApresBlocage();
   }
 
   function retournerAuLobbyApresBlocage() {
-    navigation.replace('Lobby', {
-      mode: 'hote',
-      nomPartie: `Partie de ${appStorage.getPseudo() ?? 'Joueur'}`,
-      joueursExistants: construireJoueursPourLobby(tournoi, infosAffichage),
-    });
+    if (tournoi) {
+      navigation.replace('Lobby', {
+        mode: 'hote',
+        nomPartie: `Partie de ${appStorage.getPseudo() ?? 'Joueur'}`,
+        joueursExistants: construireJoueursPourLobby(tournoi, infosAffichage),
+      });
+    } else {
+      retourAccueil(navigation);
+    }
   }
-
-  // ---------------------------------------------------------------------
-  // Vues plein écran selon la phase de la partie
-  // ---------------------------------------------------------------------
 
   if (tournoi.vainqueurId) {
     return <VueFinTournoi tournoi={tournoi} infosAffichage={infosAffichage} onQuitter={quitter} />;
@@ -142,27 +231,23 @@ export function TableJeuScreen({ navigation, route }: Props) {
     );
   }
 
-  if (!revele) {
+  if (!revele && !estReseau) {
     const joueur = joueurActifId ? infosAffichage.get(joueurActifId) : undefined;
     return <VuePassageAppareil joueur={joueur} onRevele={() => setRevele(true)} />;
   }
 
-  // ---------------------------------------------------------------------
-  // Table de jeu normale
-  // ---------------------------------------------------------------------
-
-  const monJoueurEtat = manche.joueurs.find((j) => j.id === joueurActifId);
+  // En réseau, la main affichée est TOUJOURS celle du joueur local (monId). En Hotseat, c'est celle de joueurActifId.
+  const idJoueurMain = estReseau ? monId : joueurActifId;
+  const monJoueurEtat = manche.joueurs.find((j) => j.id === idJoueurMain);
   const top = carteVisible(manche);
+  const cEstMonTour = estReseau ? joueurActifId === monId : true;
 
-  // La pioche (bouton "Banque") peut être impossible si la banque et la
-  // défausse recyclable sont insuffisantes. Dans ce cas on grise le bouton
-  // plutôt que de bloquer automatiquement la partie : le joueur peut encore
-  // déposer une carte valide, ou choisir explicitement de terminer la partie.
   const nombreAPiocher = manche.compteurAttaque > 0 ? manche.compteurAttaque : 1;
   const piocheDisponible = peutPiocher(manche, nombreAPiocher);
 
   function estJouable(carte: CarteMoteur): boolean {
-    return carteJouable(manche, carte, configActive);
+    if (!cEstMonTour) return false;
+    return carteJouable(manche!, carte, configActive);
   }
 
   return (
@@ -172,7 +257,7 @@ export function TableJeuScreen({ navigation, route }: Props) {
           <Text style={{ color: theme.colors.textSecondary, fontSize: 20 }}>✕</Text>
         </Pressable>
         <Text style={[caption, { color: theme.colors.textSecondary }]}>
-          Manche {tournoi.mancheCouranteNumero + 1}
+          Manche {tournoi.mancheCouranteNumero + 1} {estReseau ? '· Réseau LAN' : '· Hotseat'}
         </Text>
         <View style={{ width: 20 }} />
       </View>
@@ -183,7 +268,7 @@ export function TableJeuScreen({ navigation, route }: Props) {
         </Card>
       )}
 
-      {/* Liste fixe des joueurs (ordre physique du lobby) */}
+      {/* Liste des joueurs */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -191,7 +276,7 @@ export function TableJeuScreen({ navigation, route }: Props) {
       >
         {joueurs.map((jInitial) => {
           const joueurEtat = manche.joueurs.find((j) => j.id === jInitial.id);
-          if (!joueurEtat) return null; // Éliminé du tournoi ou absent
+          if (!joueurEtat) return null;
 
           const infos = infosAffichage.get(jInitial.id);
           const estActif = joueurEtat.id === joueurActifId;
@@ -251,10 +336,17 @@ export function TableJeuScreen({ navigation, route }: Props) {
         </Pressable>
       )}
 
-      {/* Main du joueur actif */}
+      {/* Main du joueur local */}
       <Text style={[h2, { color: theme.colors.textPrimary, marginBottom: theme.spacing.sm }]}>
-        {joueurActifId === monId ? 'Votre main' : `Main de ${infosAffichage.get(joueurActifId ?? '')?.nom ?? '...'}`}
+        {estReseau
+          ? cEstMonTour
+            ? 'À votre tour de jouer !'
+            : `Tour de ${infosAffichage.get(joueurActifId ?? '')?.nom ?? '...'}`
+          : joueurActifId === monId
+            ? 'Votre main'
+            : `Main de ${infosAffichage.get(joueurActifId ?? '')?.nom ?? '...'}`}
       </Text>
+
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -273,7 +365,7 @@ export function TableJeuScreen({ navigation, route }: Props) {
                 carte={carte}
                 taille="md"
                 selectionnee={carte.id === selectionId}
-                onPress={jouable ? () => setSelectionId((actuel) => (actuel === carte.id ? null : carte.id)) : undefined}
+                onPress={cEstMonTour && jouable ? () => setSelectionId((actuel) => (actuel === carte.id ? null : carte.id)) : undefined}
               />
             </View>
           );
@@ -287,15 +379,15 @@ export function TableJeuScreen({ navigation, route }: Props) {
             if (selectionId) jouerCarte(selectionId);
             setSelectionId(null);
           }}
-          disabled={!selectionId}
+          disabled={!cEstMonTour || !selectionId}
         />
-        <Button label="BANQUE" variant="danger" onPress={partirEnBanque} disabled={!piocheDisponible} />
+        <Button label="BANQUE" variant="danger" onPress={partirEnBanque} disabled={!cEstMonTour || !piocheDisponible} />
         {!piocheDisponible && (
-          <Button label="TERMINER LA PARTIE" variant="ghost" onPress={() => setConfirmerBlocage(true)} />
+          <Button label="TERMINER LA PARTIE" variant="ghost" onPress={() => setConfirmerBlocage(true)} disabled={!cEstMonTour} />
         )}
       </View>
 
-      <Dialog visible={manche.phase === 'choixEnseigneValet'} title="Choisis une enseigne">
+      <Dialog visible={manche.phase === 'choixEnseigneValet' && (manche.joueurEnAttenteChoixEnseigne === monId || !estReseau)} title="Choisis une enseigne">
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.md, justifyContent: 'center' }}>
           {ENSEIGNES.map((enseigne) => (
             <Pressable
@@ -383,10 +475,7 @@ export function TableJeuScreen({ navigation, route }: Props) {
   );
 }
 
-// ---------------------------------------------------------------------
-// Vues plein écran
-// ---------------------------------------------------------------------
-
+// Vues annexes
 function VuePassageAppareil({ joueur, onRevele }: { joueur?: JoueurAffichage; onRevele: () => void }) {
   const theme = useTheme();
   const h1 = resolveTextStyle(theme, 'h1');
@@ -554,10 +643,6 @@ function VueFinTournoi({
     </ShellLayout>
   );
 }
-
-// ---------------------------------------------------------------------
-// Composants internes
-// ---------------------------------------------------------------------
 
 function JoueurEntete({
   joueurEtat,

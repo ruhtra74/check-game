@@ -1,96 +1,134 @@
 import Zeroconf from 'react-native-zeroconf';
+import { PORT_PAR_DEFAUT, SERVICE_DOMAIN, SERVICE_PROTOCOL, SERVICE_TYPE } from './protocol';
 
-const zeroconf = new Zeroconf();
-
-export interface DiscoveredGame {
-  id: string; 
-  nomPartie: string;
+export interface PartieDecouverte {
+  id: string;
+  nom: string;
   hoteNom: string;
-  nbJoueurs: number;
   hostIp: string;
   port: number;
+  nbJoueurs: number;
+  nbJoueursMax: number;
 }
 
-// État local du module pour éviter la duplication d'écoute
-let isScanning = false;
-let publishedName = '';
+class ServiceDecouverte {
+  private zeroconf: Zeroconf | null = null;
+  private servicePublie: string | null = null;
+  private partiesTrouvees = new Map<string, PartieDecouverte>();
+  private onMiseAJourParties?: (parties: PartieDecouverte[]) => void;
 
-export const DiscoveryService = {
+  private getZeroconf(): Zeroconf {
+    if (!this.zeroconf) {
+      this.zeroconf = new Zeroconf();
+    }
+    return this.zeroconf;
+  }
+
   /**
-   * Publie la partie sur le réseau local (Wi-Fi).
+   * Publie la partie sur le réseau LAN via mDNS Zeroconf.
    */
-  startPublishing: (port: number, identifier: string, nomPartie: string, pseudoHost: string, nbJoueurs: number = 1) => {
-    DiscoveryService.stopPublishing();
+  public publierPartie(options: {
+    nomPartie: string;
+    hoteNom: string;
+    port?: number;
+    nbJoueurs?: number;
+    nbJoueursMax?: number;
+  }): void {
+    const z = this.getZeroconf();
+    const port = options.port ?? PORT_PAR_DEFAUT;
+    const serviceName = `checkgame-${Date.now()}`;
 
-    publishedName = `chk_${identifier}`;
-    
-    // Les champs TXT permettent de diffuser des métadonnées (nom de partie, pseudo). 
-    // Ils doivent être de type String.
-    const txtRecords = {
-       n: nomPartie,
-       h: pseudoHost,
-       j: nbJoueurs.toString(),
+    const txtRecord = {
+      nomPartie: options.nomPartie,
+      hoteNom: options.hoteNom,
+      nbJoueurs: String(options.nbJoueurs ?? 1),
+      nbJoueursMax: String(options.nbJoueursMax ?? 6),
     };
 
-    // Publie le service mDNS.
-    zeroconf.publish(publishedName, 'tcp', 'local.', 'CheckGameHost', port, txtRecords);
-  },
-
-  /**
-   * Stoppe la diffusion mDNS de la partie.
-   */
-  stopPublishing: () => {
-    if (publishedName) {
-      zeroconf.unpublishService(publishedName);
-      publishedName = '';
+    try {
+      z.publishService(SERVICE_TYPE, SERVICE_PROTOCOL, SERVICE_DOMAIN, serviceName, port, txtRecord);
+      this.servicePublie = serviceName;
+    } catch (err) {
+      console.warn('Erreur lors de la publication mDNS:', err);
     }
-  },
+  }
 
   /**
-   * Scanne le réseau (LAN/Wi-Fi) à la recherche de parties CheckGame.
+   * Arrête la publication mDNS.
    */
-  startScanning: (
-    onGameFound: (game: DiscoveredGame) => void,
-    onGameLost: (serviceName: string) => void
-  ) => {
-    if (isScanning) return;
-    
-    zeroconf.removeDeviceListeners();
-    
-    zeroconf.on('resolved', (service) => {
-      if (service.name && service.name.startsWith('chk_')) {
-         const hostIp = service.addresses && service.addresses[0];
-         if (hostIp) {
-            onGameFound({
-              id: service.name, // On utilise le nom de service unique comme identifiant
-              nomPartie: service.txt?.n ?? 'Partie LAN',
-              hoteNom: service.txt?.h ?? 'Un Joueur',
-              nbJoueurs: service.txt?.j ? parseInt(service.txt.j, 10) : 1,
-              hostIp,
-              port: service.port,
-            });
-         }
+  public arreterPublication(): void {
+    if (this.servicePublie && this.zeroconf) {
+      try {
+        this.zeroconf.unpublishService(this.servicePublie);
+      } catch (err) {
+        console.warn('Erreur lors de l’arrêt mDNS:', err);
+      }
+      this.servicePublie = null;
+    }
+  }
+
+  /**
+   * Démarre la recherche active des parties sur le réseau LAN.
+   */
+  public demarrerScan(onUpdate: (parties: PartieDecouverte[]) => void): void {
+    this.onMiseAJourParties = onUpdate;
+    this.partiesTrouvees.clear();
+
+    const z = this.getZeroconf();
+    z.stop();
+    z.removeAllListeners();
+
+    z.on('resolved', (service: any) => {
+      if (!service || !service.addresses || service.addresses.length === 0) return;
+      const hostIp = service.addresses[0];
+      const txt = service.txt || {};
+
+      const partie: PartieDecouverte = {
+        id: service.name,
+        nom: txt.nomPartie ?? service.name ?? 'Partie sans nom',
+        hoteNom: txt.hoteNom ?? 'Hôte inconnu',
+        hostIp,
+        port: service.port || PORT_PAR_DEFAUT,
+        nbJoueurs: parseInt(txt.nbJoueurs ?? '1', 10),
+        nbJoueursMax: parseInt(txt.nbJoueursMax ?? '6', 10),
+      };
+
+      this.partiesTrouvees.set(service.name, partie);
+      this.onMiseAJourParties?.(Array.from(this.partiesTrouvees.values()));
+    });
+
+    z.on('removed', (service: any) => {
+      if (service && service.name) {
+        this.partiesTrouvees.delete(service.name);
+        this.onMiseAJourParties?.(Array.from(this.partiesTrouvees.values()));
       }
     });
 
-    zeroconf.on('remove', (serviceName) => {
-       if (serviceName.startsWith('chk_')) {
-          onGameLost(serviceName); 
-       }
+    z.on('error', (err: any) => {
+      console.warn('Erreur Zeroconf scan:', err);
     });
-    
-    zeroconf.scan('tcp', 'local.');
-    isScanning = true;
-  },
 
-  /**
-   * Stoppe le scan.
-   */
-  stopScanning: () => {
-    if (isScanning) {
-      zeroconf.stop();
-      zeroconf.removeDeviceListeners();
-      isScanning = false;
+    try {
+      z.scan(SERVICE_TYPE, SERVICE_PROTOCOL, SERVICE_DOMAIN);
+    } catch (err) {
+      console.warn('Erreur au lancement du scan Zeroconf:', err);
     }
   }
-};
+
+  /**
+   * Arrête le scan mDNS.
+   */
+  public arreterScan(): void {
+    if (this.zeroconf) {
+      try {
+        this.zeroconf.stop();
+        this.zeroconf.removeAllListeners();
+      } catch (err) {
+        console.warn('Erreur lors de l’arrêt du scan Zeroconf:', err);
+      }
+    }
+    this.partiesTrouvees.clear();
+  }
+}
+
+export const discoveryService = new ServiceDecouverte();

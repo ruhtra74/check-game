@@ -39,13 +39,24 @@ export type RootStackParamList = {
         mode: 'hote';
         nomPartie: string;
         estReseau?: boolean;
-        // Fourni quand on revient d'une partie interrompue (banque vide) :
-        // pré-remplit le lobby avec les joueurs encore actifs plutôt que de
-        // repartir d'une simulation d'arrivée vide.
         joueursExistants?: { id: string; pseudo: string; emoji?: string }[];
       }
-    | { mode: 'invite'; nomPartie: string; hoteNom: string; estReseau?: boolean; hostIp?: string; hostPort?: number };
-  TableJeu: { joueurs: JoueurAffichage[]; config: GameConfig; estReseau?: boolean; modeReseau?: 'hote' | 'invite' };
+    | {
+        mode: 'invite';
+        nomPartie: string;
+        hoteNom: string;
+        estReseau?: boolean;
+        hostIp?: string;
+        port?: number;
+      };
+  TableJeu: {
+    joueurs: JoueurAffichage[];
+    config: GameConfig;
+    estReseau?: boolean;
+    mode?: 'hote' | 'invite' | 'hotseat';
+    hostIp?: string;
+    port?: number;
+  };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
