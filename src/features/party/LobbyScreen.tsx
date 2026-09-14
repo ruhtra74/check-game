@@ -13,8 +13,6 @@ import { useLobbyClient } from './useLobbyClient';
 import type { EtatLobby, JoueurLobby } from './types';
 import type { GameConfig } from '../../engine';
 
-import { NetworkManager } from '../../network/NetworkManager';
-
 type Props = NativeStackScreenProps<RootStackParamList, 'Lobby'>;
 
 export function LobbyScreen(props: Props) {
@@ -34,11 +32,8 @@ export function LobbyScreen(props: Props) {
 
 function LobbyScreenHotseat({ navigation, route }: Props) {
   const { mode, nomPartie } = route.params;
-  const estReseau = route.params.estReseau ?? false;
   const hoteNomSiInvite = route.params.mode === 'invite' ? route.params.hoteNom : undefined;
   const joueursExistants = route.params.mode === 'hote' ? route.params.joueursExistants : undefined;
-  const hostIp = route.params.mode === 'invite' ? route.params.hostIp : undefined;
-  const hostPort = route.params.mode === 'invite' ? route.params.hostPort : undefined;
 
   const controller = useLobbySimulation({ mode, nomPartie, hoteNomSiInvite, joueursExistants });
 
@@ -152,6 +147,7 @@ function LobbyView({
       mode: estReseau ? mode : 'hotseat',
       hostIp,
       port,
+      hoteNom: hote?.pseudo,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [etat.phase]);
@@ -162,14 +158,9 @@ function LobbyView({
 
   const nbPrets = etat.joueurs.filter((j) => j.selectionne && j.pret).length;
 
-  function quitterLobby() {
-    NetworkManager.teardown();
-    navigation.goBack();
-  }
-
   return (
     <ShellLayout ongletActif={null} masquerBottomNav>
-      <ScreenHeader title={etat.nomPartie} onBack={quitterLobby} />
+      <ScreenHeader title={etat.nomPartie} onBack={navigation.goBack} />
 
       <Text style={[caption, { color: theme.colors.textSecondary, marginBottom: theme.spacing.lg }]}>
         Hôte : {hote?.pseudo ?? '...'} {estReseau ? '(Partie Réseau LAN)' : '(Mode Local Hotseat)'}

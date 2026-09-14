@@ -56,6 +56,7 @@ export type RootStackParamList = {
     mode?: 'hote' | 'invite' | 'hotseat';
     hostIp?: string;
     port?: number;
+    hoteNom?: string;
   };
 };
 

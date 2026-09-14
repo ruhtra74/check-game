@@ -58,3 +58,26 @@ Toute la mécanique du jeu a été écrite et vérifiée par des tests automatiq
 ## En résumé
 
 On peut voir le projet comme une pièce de théâtre : le texte (les règles du jeu) est entièrement écrit et répété. Le décor et les costumes (l'interface) sont prêts pour presque toutes les scènes. Il reste à faire jouer les acteurs ensemble sur scène pour de vrai (le réseau) et à relier le texte aux acteurs (brancher les règles à l'écran de jeu).
+
+
+
+Bouton refresh pour tout ce qui concerne le reseau
+Enlever les termes techniques des interfaces !!
+Mieux positionner le pop-up qui presente le choix d'enseigne pour le J commande (on doit pouvoir voir ses cartes lorsque l'on fait le choix)
+Permettre le choix pour l'affichage des carte (defilement horizontale, affichage vertical)
+
+
+en mode pass-and-play : 
+- ajouter une interface pour creer les joueurs qui seront dans la parties.
+- faire en sorte que se soit le jour qui termine (pour lui laisser le temps de voir son jeu avant de passer le telephone)
+
+
+prompt
+il y a eu un probleme, lorsque le tournoi est termine
+Android Bundled 99ms index.js (1 module)
+ LOG  Nouveau client connecté au serveur de jeu: p-mu0clabu-fkf0dxml
+ ERROR  [ReferenceError: Property 'NetworkManager' doesn't exist]
+
+l'invite a eu un message d'erreur l'hote est rentre dans le lobby mais en mode local hotseat
+
+Je voudrais qu'a la fin tout le monde revient dans le lobby de l'hote sans rien casser du reseau. SI c'est juste une partie alors le/les joueur(s) perdant sont la mais grise. Si c'est la fin du tournoi, tout le monde est la. Pour lancer la prochaine partie tout le mode dit une nouvelle foi oui comme au debut.

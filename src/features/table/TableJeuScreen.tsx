@@ -28,7 +28,6 @@ type Props = NativeStackScreenProps<RootStackParamList, 'TableJeu'>;
 const ENSEIGNES: Suit[] = ['pique', 'coeur', 'trefle', 'carreau'];
 
 function retourAccueil(navigation: Props['navigation']) {
-  NetworkManager.teardown();
   navigation.reset({ index: 0, routes: [{ name: 'Accueil' }] });
 }
 
@@ -105,7 +104,7 @@ interface TableJeuContentProps extends Props {
   };
 }
 
-function TableJeuContent({ navigation, route, estReseau, hoteDeconnecte, controller }: TableJeuContentProps) {
+function TableJeuContent({ navigation, route, estReseau, mode, hoteDeconnecte, controller }: TableJeuContentProps) {
   const { joueurs } = route.params;
   const {
     tournoi,
@@ -201,11 +200,24 @@ function TableJeuContent({ navigation, route, estReseau, hoteDeconnecte, control
   }
 
   function retournerAuLobbyApresBlocage() {
+    if (estReseau && mode === 'invite') {
+      navigation.replace('Lobby', {
+        mode: 'invite',
+        nomPartie: `Partie de ${route.params.hoteNom ?? 'l’hôte'}`,
+        hoteNom: route.params.hoteNom ?? 'Hôte',
+        estReseau: true,
+        hostIp: route.params.hostIp,
+        port: route.params.port,
+      });
+      return;
+    }
+
     if (tournoi) {
       navigation.replace('Lobby', {
         mode: 'hote',
         nomPartie: `Partie de ${appStorage.getPseudo() ?? 'Joueur'}`,
         joueursExistants: construireJoueursPourLobby(tournoi, infosAffichage),
+        estReseau,
       });
     } else {
       retourAccueil(navigation);
